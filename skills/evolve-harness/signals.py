@@ -21,6 +21,11 @@ import os
 import re
 
 SESS_ROOT = os.path.expanduser("~/.pi/agent/sessions")
+CLAUDE_SESS_ROOT = os.path.expanduser("~/.claude/projects")
+
+# Claude Code marks an aborted turn as a user message carrying this sentinel,
+# instead of pi's assistant stopReason="aborted".
+CLAUDE_INTERRUPT = "[Request interrupted by user"
 
 # User text that redirects / negates the agent's current course.
 CORRECTION = re.compile(
@@ -57,6 +62,26 @@ def text_of(content):
     return ""
 
 
+# System-injected user-role messages that are NOT human turns: pi skill
+# templates, Claude Code slash-command tags, skill bodies, Stop-hook feedback,
+# `!`-run local-command echoes, and post-compaction continuation summaries.
+INJECTION_PREFIXES = (
+    "<skill", "<command-name>", "<command-message>", "<local-command-",
+    "<task-notification", "<system-reminder>",
+    "base directory for this skill:", "stop hook feedback:",
+    "caveat: the messages below were generated",
+    "this session is being continued from a previous conversation",
+)
+
+
+def is_injection(text):
+    s = text.lstrip()
+    if 'location="' in s[:120]:
+        return True
+    low = s[:200].lower()
+    return any(low.startswith(p) for p in INJECTION_PREFIXES)
+
+
 def clip(s, n=140):
     s = " ".join(s.split())
     return s if len(s) <= n else s[: n - 1] + "…"
@@ -85,7 +110,7 @@ def assistant_action(msg):
         if b.get("type") == "toolCall":
             name = b.get("name", "?")
             args = b.get("arguments", {}) or {}
-            hint = args.get("path") or args.get("command") or ""
+            hint = args.get("path") or args.get("file_path") or args.get("command") or ""
             tools.append(f"{name}({clip(str(hint), 40)})" if hint else name)
         elif b.get("type") == "text":
             txt = b.get("text", "") or txt
@@ -96,11 +121,8 @@ def assistant_action(msg):
     return "(no visible action)"
 
 
-def analyze(path, start, end):
-    """Return a dict of signals for one session, or None if not in [start, end]."""
-    header = None
-    entries = []  # (ts, role-or-type, message-or-entry)
-    touched_date = False
+def _raw_lines(path):
+    """Yield parsed JSON objects from a JSONL session file, skipping junk."""
     try:
         with open(path, "r", encoding="utf-8") as f:
             for line in f:
@@ -108,18 +130,133 @@ def analyze(path, start, end):
                 if not line:
                     continue
                 try:
-                    o = json.loads(line)
+                    yield json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if o.get("type") == "session":
-                    header = o
-                    continue
-                ts = o.get("timestamp", "")
-                if in_range(ts, start, end):
-                    touched_date = True
-                entries.append(o)
     except OSError:
-        return None
+        return
+
+
+def is_claude_format(path):
+    """Claude Code sessions have no pi 'session' header; their turns are
+    top-level type=user/assistant with an Anthropic-style message block."""
+    for o in _raw_lines(path):
+        t = o.get("type")
+        if t == "session":
+            return False
+        if t in ("user", "assistant") and isinstance(o.get("message"), dict):
+            return True
+        if t in ("model_change", "compaction"):
+            return False
+    return False
+
+
+def _norm_claude_blocks(content):
+    """Anthropic content list -> pi-shaped block list (toolCall/text) + the
+    tool_result blocks split out (Claude nests tool results inside user turns)."""
+    pi_blocks, tool_results, texts = [], [], []
+    if isinstance(content, str):
+        texts.append(content)
+        pi_blocks.append({"type": "text", "text": content})
+        return pi_blocks, tool_results, texts
+    if isinstance(content, list):
+        for b in content:
+            if not isinstance(b, dict):
+                continue
+            bt = b.get("type")
+            if bt == "text":
+                texts.append(b.get("text", ""))
+                pi_blocks.append({"type": "text", "text": b.get("text", "")})
+            elif bt == "tool_use":
+                pi_blocks.append({"type": "toolCall", "name": b.get("name", "?"),
+                                  "arguments": b.get("input", {}) or {}})
+            elif bt == "tool_result":
+                tool_results.append(b)
+    return pi_blocks, tool_results, texts
+
+
+def read_claude(path, start, end):
+    """Read a Claude Code session, normalizing to pi-shaped entries that the
+    common analysis loop understands. Returns (header, entries, touched_date)."""
+    header = None
+    entries = []
+    touched_date = False
+    tool_name_by_id = {}  # tool_use_id -> tool name, for labeling tool_result errors
+    last_assistant = None  # to retro-mark an interrupt onto the turn it aborted
+
+    for o in _raw_lines(path):
+        t = o.get("type")
+        ts = o.get("timestamp", "")
+        if header is None and o.get("cwd"):
+            header = {"type": "session", "cwd": o.get("cwd")}
+        if ts and in_range(ts, start, end):
+            touched_date = True
+
+        if o.get("isCompactSummary") or (t == "system" and o.get("subtype") == "compact"):
+            entries.append({"type": "compaction", "timestamp": ts})
+            continue
+        if t not in ("user", "assistant"):
+            continue
+
+        msg = o.get("message", {})
+        if t == "assistant":
+            for b in msg.get("content", []) if isinstance(msg.get("content"), list) else []:
+                if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("id"):
+                    tool_name_by_id[b["id"]] = b.get("name", "?")
+            pi_blocks, _, _ = _norm_claude_blocks(msg.get("content"))
+            entry = {"type": "message", "timestamp": ts,
+                     "message": {"role": "assistant", "model": msg.get("model"),
+                                 "stopReason": msg.get("stop_reason"), "content": pi_blocks}}
+            entries.append(entry)
+            last_assistant = entry
+            continue
+
+        # user turn: may be real text, an interrupt sentinel, or nested tool results
+        _, tool_results, texts = _norm_claude_blocks(msg.get("content"))
+        joined = " ".join(texts).strip()
+        if joined and CLAUDE_INTERRUPT in joined:
+            if last_assistant is not None:
+                last_assistant["message"]["stopReason"] = "aborted"
+            remainder = joined.split("]", 1)[-1].strip()
+            if len(remainder) > 8:  # user redirected right after aborting
+                entries.append({"type": "message", "timestamp": ts,
+                                "message": {"role": "user", "content": remainder}})
+            continue
+        if joined:
+            entries.append({"type": "message", "timestamp": ts,
+                            "message": {"role": "user", "content": joined}})
+            continue
+        for b in tool_results:  # tool-result-only user turn -> toolResult entries
+            entries.append({"type": "message", "timestamp": ts,
+                            "message": {"role": "toolResult",
+                                        "isError": bool(b.get("is_error")),
+                                        "toolName": tool_name_by_id.get(b.get("tool_use_id"), "?"),
+                                        "content": b.get("content", "")}})
+    return header, entries, touched_date
+
+
+def read_pi(path, start, end):
+    """Read a pi session. Returns (header, entries, touched_date)."""
+    header = None
+    entries = []
+    touched_date = False
+    for o in _raw_lines(path):
+        if o.get("type") == "session":
+            header = o
+            continue
+        ts = o.get("timestamp", "")
+        if in_range(ts, start, end):
+            touched_date = True
+        entries.append(o)
+    return header, entries, touched_date
+
+
+def analyze(path, start, end):
+    """Return a dict of signals for one session, or None if not in [start, end]."""
+    if is_claude_format(path):
+        header, entries, touched_date = read_claude(path, start, end)
+    else:
+        header, entries, touched_date = read_pi(path, start, end)
     if not touched_date:
         return None
 
@@ -193,15 +330,18 @@ def analyze(path, start, end):
             if not t.strip():
                 streak += 1
                 continue
+            # System-injected turns (skill bodies, command tags, hook feedback,
+            # local-command echoes) are not human input: they must not reset the
+            # autonomous-streak counter, nor count as corrections/repeats.
+            if is_injection(t):
+                continue
             if streak >= 12:
                 long_runs.append((hhmm(ts), streak, last_asst))
             streak = 0
             user_seen += 1
             q = clip(t, 140)
-            # The first user turn is the task spec, and skill/template injections
-            # are not corrections — skip them to keep signal clean.
-            is_injection = t.lstrip().startswith("<skill") or 'location="' in t[:120]
-            if not is_injection and user_seen > 1:
+            # The first user turn is the task spec, not a correction.
+            if user_seen > 1:
                 if CORRECTION.search(t):
                     corrections.append((hhmm(ts), q, last_asst))
                 if FRUSTRATION.search(t):
@@ -292,7 +432,7 @@ def main():
     ap.add_argument("--since", default="", help="range start YYYY-MM-DD (local)")
     ap.add_argument("--until", default="", help="range end YYYY-MM-DD (local); default today")
     ap.add_argument("--grep", default="", help="only sessions whose cwd path contains this substring")
-    ap.add_argument("--root", default=SESS_ROOT)
+    ap.add_argument("--root", default="", help="scan only this session root; default scans both pi and Claude Code")
     ap.add_argument("--max", type=int, default=6, help="max rows printed per signal list")
     ap.add_argument("--totals", action="store_true", help="print only the summary totals (for before/after comparison)")
     args = ap.parse_args()
@@ -303,7 +443,10 @@ def main():
         day = dt.date.fromisoformat(args.date) if args.date else dt.date.today()
         start = end = day
 
-    files = glob.glob(os.path.join(args.root, "*", "*.jsonl"))
+    roots = [args.root] if args.root else [SESS_ROOT, CLAUDE_SESS_ROOT]
+    files = []
+    for root in roots:
+        files += glob.glob(os.path.join(root, "*", "*.jsonl"))
     # cheap pre-filter by mtime within a generous window around the range
     lo = dt.datetime.combine(start, dt.time.min).timestamp() - 6 * 3600
     hi = dt.datetime.combine(end, dt.time.max).timestamp() + 6 * 3600
