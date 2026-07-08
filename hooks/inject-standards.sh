@@ -5,8 +5,8 @@
 
 set -euo pipefail
 
-HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO="$(cd "$HOOK_DIR/.." && pwd)"
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO="$(cd "$HOOK_DIR/.." && pwd -P)"
 STANDARDS_DIR="${PI_STANDARDS_DIR:-$REPO/docs/standards}"
 
 [[ -d "$STANDARDS_DIR" ]] || exit 0

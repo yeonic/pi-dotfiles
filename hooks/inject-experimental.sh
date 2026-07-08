@@ -6,8 +6,8 @@
 
 set -euo pipefail
 
-HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO="$(cd "$HOOK_DIR/.." && pwd)"
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO="$(cd "$HOOK_DIR/.." && pwd -P)"
 EXP_DIR="${PI_EXPERIMENTAL_DIR:-$REPO/docs/experimental}"
 
 [[ -d "$EXP_DIR" ]] || exit 0

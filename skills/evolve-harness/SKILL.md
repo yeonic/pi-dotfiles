@@ -13,15 +13,21 @@ Four phases. **Do not skip ahead, and do not write any file until Phase 4 is app
 
 ## Phase 0: Know the knobs (read first, every run)
 
-Before judging anything, load what already exists so you propose **gaps, not duplicates**. Read:
+Before judging anything, load what already exists so you propose **gaps, not duplicates**. First resolve the dotfiles repo root portably from this skill's symlink (the repo lives at a different absolute path on each machine; never hardcode `~/dev/...`):
 
-- `~/dev/pi-dotfiles/docs/integrated/*.md` — always-on rules compiled into `AGENTS.md` (cross-tool).
-- `~/dev/pi-dotfiles/docs/experimental/*.md` — live-test rules (pi-only, injected each turn).
-- `~/dev/pi-dotfiles/docs/standards/*.md` — coding (write-time) + testing (review-time), injected by `standards-verifier`.
-- `~/dev/pi-dotfiles/extensions/guardrails.json` — deterministic command/path gates.
-- `~/dev/pi-dotfiles/extensions/*/` — custom hooks (block/inject/transform).
-- `~/dev/pi-dotfiles/skills/*/` — reusable workflows.
-- **The ledger** — run `python3 ~/dev/pi-dotfiles/skills/harness-ledger/ledger.py list`. This tells you what was already tried, what is under evaluation, and what was already reverted, so you don't re-propose a settled or failed idea.
+```bash
+DOT="$(cd "$(dirname "$(readlink ~/.claude/skills/evolve-harness)")/.." && pwd)"
+```
+
+Then read:
+
+- `$DOT/docs/integrated/*.md` — always-on rules compiled into `AGENTS.md` (cross-tool).
+- `$DOT/docs/experimental/*.md` — live-test rules (pi-only, injected each turn).
+- `$DOT/docs/standards/*.md` — coding (write-time) + testing (review-time), injected by `standards-verifier`.
+- `$DOT/extensions/guardrails.json` — deterministic command/path gates.
+- `$DOT/extensions/*/` — custom hooks (block/inject/transform).
+- `$DOT/skills/*/` — reusable workflows.
+- **The ledger** — run `python3 ~/.claude/skills/harness-ledger/ledger.py list`. This tells you what was already tried, what is under evaluation, and what was already reverted, so you don't re-propose a settled or failed idea.
 
 If a friction is already covered by an existing rule/gate, that is itself a finding: the rule exists but **did not fire** → the problem is enforcement or salience, not absence. If it matches a `reverted` ledger entry, say so instead of re-proposing it.
 
@@ -107,8 +113,8 @@ Constraints:
 
 For each approved proposal:
 
-- **Experimental rule:** write `~/dev/pi-dotfiles/docs/experimental/<slug>.md` (one rule, with rationale). It is live next session via `experimental-injector` — no rebuild.
-- **Integrated rule:** edit the `docs/integrated/` source, then run `~/dev/pi-dotfiles/build.sh`.
+- **Experimental rule:** write `$DOT/docs/experimental/<slug>.md` (one rule, with rationale; `$DOT` resolved as in Phase 0). It is live next session via `experimental-injector` — no rebuild.
+- **Integrated rule:** edit the `$DOT/docs/integrated/` source, then run `$DOT/build.sh`.
 - **Standard:** edit the relevant `docs/standards/*.md`.
 - **Guardrails:** add the pattern to `extensions/guardrails.json` (validate JSON; mirror existing pattern style).
 - **Extension/skill:** create the file(s); keep changes small and self-contained.
@@ -116,7 +122,7 @@ For each approved proposal:
 Then **record each applied change in the ledger** (so tracking is automatic, not manual):
 
 ```bash
-python3 ~/dev/pi-dotfiles/skills/harness-ledger/ledger.py new \
+python3 ~/.claude/skills/harness-ledger/ledger.py new \
   --title "<short>" --status <experimental|permanent> --knob <knob> \
   --target <real file path> --evidence "<session evidence>" --tags "a,b"
 ```

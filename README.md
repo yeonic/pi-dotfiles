@@ -1,4 +1,4 @@
-# pi-dotfiles
+# agent-dotfiles
 
 Personal agent harness, managed via symlinks from a single source of truth into
 **pi**, **Claude Code**, and **Codex CLI**. One repo drives all three tools, so a
@@ -22,7 +22,7 @@ place, rebuild, all three update.
 ## Layout
 
 ```
-pi-dotfiles/
+agent-dotfiles/
 ├── agent/                 # Files linked under ~/.pi/agent/
 │   ├── AGENTS.md          # BUILT FILE — do not edit (run ./build.sh)
 │   └── settings.json      # pi settings (pi only; not portable to other tools)

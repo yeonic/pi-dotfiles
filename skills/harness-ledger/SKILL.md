@@ -48,7 +48,7 @@ Run when the user asks to review the ledger, or proactively after session work.
 2. **For each `experimental` finding, judge it from the user's actual usage** — measure, don't guess. The user only ever confirms; you produce the evidence. Use `evolve-harness`'s extractor across **all pi sessions** (every project; never pass `--grep`), comparing equal windows before and after the rule's `date`:
 
    ```bash
-   S=~/dev/pi-dotfiles/skills/evolve-harness/signals.py
+   S=~/.claude/skills/evolve-harness/signals.py
    python3 $S --since <date-Δ> --until <date-1> --totals    # before the rule
    python3 $S --since <date>   --until <today>  --totals    # after the rule
    ```
