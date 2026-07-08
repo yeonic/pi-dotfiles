@@ -39,8 +39,7 @@ pi-dotfiles/
 │   └── guardrails.json    #   git permission gate
 ├── hooks/                 # Claude Code hooks (port of the pi extensions above)
 │   ├── inject-experimental.sh  # SessionStart: docs/experimental → context
-│   ├── inject-standards.sh     # SessionStart: write-time coding standards
-│   └── verify-standards.sh     # Stop: review-time net (loop-safe)
+│   └── inject-standards.sh     # SessionStart: write-time coding standards
 ├── skills/                # Shared skills, symlinked per-tool
 ├── statusline/            # Claude Code status line (cwd, model, ctx%, 5h/7d, PR+CI)
 │   └── statusline.sh
@@ -99,7 +98,6 @@ edits the same files.
 | `docs/integrated/*` → `AGENTS.md` | symlink | `CLAUDE.md` symlink | `AGENTS.md` symlink |
 | `docs/experimental/*` | `experimental-injector` ext | `inject-experimental.sh` (SessionStart) | — (not auto-injected) |
 | `docs/standards/*coding*` (write-time) | `standards-verifier` ext | `inject-standards.sh` (SessionStart) | — |
-| `docs/standards/*` (review-time net) | `standards-verifier` ext | `verify-standards.sh` (Stop) | — |
 | `skills/*` | `~/.pi/agent/skills` (dir link) | per-skill links | per-skill links |
 
 Hooks are **Claude Code only** — Codex CLI has no equivalent hook system, so on
@@ -107,16 +105,12 @@ Codex the standards/experimental rules are covered by `AGENTS.md` content only.
 
 ### Claude Code hooks
 
-The two pi extensions that do real work (`experimental-injector`,
-`standards-verifier`) are reimplemented as Claude Code hooks in `hooks/`:
+The pi extension that does real work (`experimental-injector`) is reimplemented
+as Claude Code hooks in `hooks/`:
 
 - **`inject-experimental.sh`** / **`inject-standards.sh`** — SessionStart hooks
   that emit `additionalContext`. Injected once per session (vs pi's per-turn) to
   stay lean against Claude's accumulating transcript.
-- **`verify-standards.sh`** — Stop hook. When the agent tries to finish with
-  uncommitted/untracked **code** changes, it blocks with a self-review demand
-  (run lint/type-check/test + check against testing standards). Loop-safe via
-  `stop_hook_active`.
 
 `footer-status` and `usage-bridge` are pi-TUI-specific and intentionally not
 ported. Their useful parts are instead rebuilt on Claude Code's **native**

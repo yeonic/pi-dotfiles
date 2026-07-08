@@ -93,14 +93,8 @@ merge_claude_settings() {
             { type: "command", command: ($h + "/inject-experimental.sh") },
             { type: "command", command: ($h + "/inject-standards.sh") }
         ] } ]
-    | .hooks.PostToolUse = ((.hooks.PostToolUse // []) | strip) + [
-        { matcher: "Edit|Write|MultiEdit|NotebookEdit", hooks: [
-            { type: "command", command: ($h + "/mark-code-edit.sh") }
-        ] } ]
-    | .hooks.Stop = ((.hooks.Stop // []) | strip) + [
-        { matcher: "", hooks: [
-            { type: "command", command: ($h + "/verify-standards.sh") }
-        ] } ]
+    | .hooks.PostToolUse = ((.hooks.PostToolUse // []) | strip)
+    | .hooks.Stop = ((.hooks.Stop // []) | strip)
   ' "$settings")"
   if [[ "$DRY_RUN" == "1" ]]; then
     echo "  DRY: merge hooks into $settings"
