@@ -134,14 +134,23 @@ implementation rather than after mistakes.
   across multiple turns, re-list it in one line before continuing, since
   the original may have scrolled out of view.
 
-- **Don't coin terms. If you must use shorthand, tag what it is.** Default
-  to plain description over an invented name. When a short label is
-  genuinely useful, state its status the first time it appears: (a) an
-  actual command / feature / API name, (b) an established industry term,
-  or (c) a label you are coining only for this conversation. Never present
-  a coined word as if it were a real command or feature — e.g. not
-  "just relink it" but "edit the `down_revision` line directly (I'm
-  calling this 'relink' for short; it is not an alembic command)".
+- **Don't coin terms, and tag ANY non-plain label on first use — real
+  jargon included.** Default to plain description over a named shorthand.
+  When a short label is genuinely useful, the first time it appears state
+  which it is: (a) an actual command / feature / API name, (b) an
+  established industry term, or (c) a label you are coining only for this
+  conversation. The tag is required even for (b) — "it's a real term" is
+  not a license to drop it untagged; the test is whether the reader is
+  *guaranteed to know it*, not whether it exists. Using a label repeatedly
+  across a long or multi-turn session without ever tagging it is the same
+  violation, just spread out. Importing a term from another domain is fine
+  only when it fits *precisely* and you define it on first use; importing
+  it because it loosely fits, or using it without that explanation, is the
+  violation (e.g. a DB-query term dropped unexplained into an email-tool
+  spec). Never present a coined word as if it were a real command or
+  feature — e.g. not "just relink it" but "edit the `down_revision` line
+  directly (I'm calling this 'relink' for short; it is not an alembic
+  command)".
 
 - **Refer to code files by a uniquely identifying path, never a bare
   basename.** Cite files by repo-relative path, and use
