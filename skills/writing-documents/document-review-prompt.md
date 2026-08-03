@@ -35,6 +35,11 @@ hallucination is not.
   in a paragraph that a small table or diagram would show at a glance.
 - **Fake or missing definition** — a plain phrase dressed up with a "this means…"
   preamble, or a real term (jargon/acronym) left undefined at first use.
+- **Session-local reference** — anything a cold reader cannot resolve from the
+  document alone: option numbers or labels from the conversation ("Option B"),
+  symbols or item numbering coined during the session (①, "항목 3"),
+  section numbers that exist only in an earlier message, "앞서 논의한 대로".
+  The fix is to re-state the referent in the document's own text.
 
 For each finding: quote the exact text, name the lens and category, and state the
 fix. Be terse — a list, not prose. End with one line: **SAFE TO PUBLISH** or
